@@ -12,8 +12,31 @@ import json
 import os
 from typing import Dict, Optional, Tuple
 import logging
+import time
+from functools import wraps
 
 logger = logging.getLogger(__name__)
+
+def retry_with_backoff(retries=3, backoff_in_seconds=1):
+    """Decorator for retrying functions with exponential backoff"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            x = backoff_in_seconds
+            for i in range(retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if i == retries - 1:
+                        logger.error(f"Failed after {retries} attempts: {str(e)}")
+                        raise
+                    else:
+                        sleep_time = x * (2 ** i)
+                        logger.warning(f"Attempt {i+1} failed, retrying in {sleep_time}s: {str(e)}")
+                        time.sleep(sleep_time)
+            return None
+        return wrapper
+    return decorator
 
 class MicroStrategyData:
     """Fetches and calculates MicroStrategy mNAV metrics"""
@@ -62,6 +85,7 @@ class MicroStrategyData:
             # Return mock data as fallback
             return self._get_fallback_data()
     
+    @retry_with_backoff(retries=3, backoff_in_seconds=1)
     def _fetch_btc_holdings(self) -> float:
         """Scrape Bitcoin holdings from saylortracker.com"""
         try:
@@ -84,6 +108,7 @@ class MicroStrategyData:
             # Return last known value
             return 607_770
     
+    @retry_with_backoff(retries=3, backoff_in_seconds=2)
     def _fetch_strategy_com_mnav(self) -> Tuple[float, str, str]:
         """Fetch official mNAV from strategy.com
         
@@ -186,6 +211,7 @@ class MicroStrategyData:
             'Fallback value (scraping failed)'
         )
     
+    @retry_with_backoff(retries=2, backoff_in_seconds=1)
     def _fetch_btc_price(self) -> float:
         """Fetch current Bitcoin price from multiple sources"""
         try:
