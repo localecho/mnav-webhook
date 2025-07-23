@@ -118,18 +118,39 @@ class MicroStrategyData:
                 scripts = soup.find_all('script')
                 for script in scripts:
                     if script.string:
-                        # Look for patterns like "mNAV":1.79 or "mnav":1.79
-                        mnav_match = re.search(r'["\']m[Nn][Aa][Vv]["\']\s*:\s*(\d+\.?\d*)', script.string)
-                        if mnav_match:
-                            value = float(mnav_match.group(1))
-                            logger.info(f"Found mNAV candidate in script: {value}")
-                            # Validate that it's a reasonable mNAV value (typically 0.5-5.0)
-                            if 0.5 <= value <= 5.0:
-                                return (
-                                    value,
-                                    datetime.utcnow().isoformat() + 'Z',
-                                    'Live from strategy.com'
-                                )
+                        # Look for mNAV metric data in JSON
+                        # First try specific metric patterns
+                        metric_patterns = [
+                            r'"name"\s*:\s*"mNAV"[^}]*"value"\s*:\s*(\d+\.?\d*)',
+                            r'"mNAV"\s*:\s*{\s*"value"\s*:\s*(\d+\.?\d*)',
+                            r'"metric"\s*:\s*"mNAV"[^}]*"current"\s*:\s*(\d+\.?\d*)',
+                        ]
+                        
+                        for pattern in metric_patterns:
+                            match = re.search(pattern, script.string, re.IGNORECASE)
+                            if match:
+                                value = float(match.group(1))
+                                logger.info(f"Found mNAV in metric pattern: {value}")
+                                if 0.5 <= value <= 5.0:
+                                    return (
+                                        value,
+                                        datetime.utcnow().isoformat() + 'Z',
+                                        'Live from strategy.com'
+                                    )
+                        
+                        # Fallback to simple pattern but exclude timestamps
+                        # Exclude patterns that look like dates (2025-01-30T20:10:13.741)
+                        if 'created_at' not in script.string[:100]:  # Check first 100 chars
+                            mnav_match = re.search(r'["\']m[Nn][Aa][Vv]["\']\s*:\s*(\d+\.?\d*)(?![\dT])', script.string)
+                            if mnav_match:
+                                value = float(mnav_match.group(1))
+                                logger.info(f"Found mNAV candidate in script: {value}")
+                                if 0.5 <= value <= 5.0:
+                                    return (
+                                        value,
+                                        datetime.utcnow().isoformat() + 'Z',
+                                        'Live from strategy.com'
+                                    )
                 
                 # Try to find in page text with context
                 text_content = soup.get_text()
