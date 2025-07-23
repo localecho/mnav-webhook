@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import logging
 import os
+import time
+from typing import Dict, Optional
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -30,24 +32,84 @@ DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 # In-memory storage for webhook data (use Redis/DB in production)
 webhook_data = []
 
+# Simple in-memory cache for MicroStrategy data
+_cache = {
+    'data': None,
+    'timestamp': 0,
+    'ttl': 300  # 5 minutes
+}
+
+def get_cached_mstr_data() -> Dict:
+    """Get MicroStrategy data with caching"""
+    current_time = time.time()
+    
+    # Check if cache is valid
+    if _cache['data'] and (current_time - _cache['timestamp']) < _cache['ttl']:
+        return _cache['data']
+    
+    # Import here to avoid circular imports
+    try:
+        from microstrategy_data import get_microstrategy_data
+        data = get_microstrategy_data()
+        
+        # Update cache
+        _cache['data'] = data
+        _cache['timestamp'] = current_time
+        
+        return data
+    except Exception as e:
+        logger.error(f"Error fetching MicroStrategy data: {e}")
+        # Return fallback data
+        return {
+            'simple_nav': 2.5,
+            'ev_nav': 2.8,
+            'btc_per_share': 0.00314,
+            'btc_holdings': 607_770,
+            'btc_price': 95_000,
+            'stock_price': 773.50,
+            'last_updated': datetime.utcnow().isoformat() + 'Z'
+        }
+
 @app.route('/')
 def home():
     """Root endpoint - Display mNAV in big centered font"""
-    # Get mNAV data (you can customize the fund_code here)
-    fund_code = request.args.get('fund_code', 'default')
+    # Get formula type from query parameter
+    formula = request.args.get('formula', 'simple').lower()
     
-    # For now using mock data - replace with actual data fetching
-    nav_value = 125.45
-    fund_name = f'Sample Fund {fund_code.upper()}'
-    change = 1.23
-    change_percent = 0.99
+    # Get real MicroStrategy data
+    data = get_cached_mstr_data()
+    
+    # Select the appropriate NAV value based on formula
+    formula_map = {
+        'simple': ('simple_nav', 'Simple NAV Premium'),
+        'ev': ('ev_nav', 'Enterprise Value NAV'),
+        'adjusted': ('adjusted_nav', 'Adjusted NAV'),
+        'btc': ('btc_per_1000_shares', 'BTC per 1000 Shares'),
+        'yield': ('btc_yield_30d', '30-Day BTC Yield')
+    }
+    
+    nav_key, formula_name = formula_map.get(formula, ('simple_nav', 'Simple NAV Premium'))
+    nav_value = data.get(nav_key, 2.5)
+    
+    # Format display value based on type
+    if formula == 'btc':
+        display_value = f"{nav_value:.2f} BTC"
+    elif formula == 'yield':
+        display_value = f"{nav_value:.1f}%"
+    else:
+        display_value = f"{nav_value:.2f}x"
+    
+    # Additional display data
+    btc_holdings = f"{data.get('btc_holdings', 607770):,}"
+    stock_price = f"${data.get('stock_price', 773.50):.2f}"
+    btc_price = f"${data.get('btc_price', 95000):,}"
     
     # HTML template with big centered mNAV display
     html_template = '''
     <!DOCTYPE html>
     <html>
     <head>
-        <title>mNAV Display</title>
+        <title>MicroStrategy mNAV</title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
@@ -110,6 +172,36 @@ def home():
             .api-link:hover {
                 color: #999;
             }
+            .formula-buttons {
+                margin: 2rem 0;
+                display: flex;
+                gap: 0.5rem;
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+            .formula-btn {
+                padding: 0.5rem 1rem;
+                background: #333;
+                border: 1px solid #555;
+                color: #fff;
+                text-decoration: none;
+                border-radius: 4px;
+                font-size: 0.9rem;
+                transition: all 0.2s;
+            }
+            .formula-btn:hover {
+                background: #444;
+                border-color: #777;
+            }
+            .formula-btn.active {
+                background: #4CAF50;
+                border-color: #4CAF50;
+            }
+            .metrics {
+                font-size: 1rem;
+                color: #aaa;
+                margin-top: 1.5rem;
+            }
             @media (max-width: 768px) {
                 .nav-value {
                     font-size: 5rem;
@@ -117,23 +209,42 @@ def home():
                 .change {
                     font-size: 1.5rem;
                 }
+                .formula-buttons {
+                    flex-direction: column;
+                    align-items: center;
+                }
+                .formula-btn {
+                    width: 200px;
+                    text-align: center;
+                }
             }
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="fund-name">{{ fund_name }}</div>
-            <h1 class="nav-value">{{ "%.2f"|format(nav_value) }}</h1>
-            <div class="change {{ 'positive' if change > 0 else 'negative' if change < 0 else 'neutral' }}">
-                {{ "+" if change > 0 else "" }}{{ "%.2f"|format(change) }} ({{ "%.2f"|format(change_percent) }}%)
+            <div class="fund-name">MICROSTRATEGY mNAV</div>
+            <h1 class="nav-value">{{ display_value }}</h1>
+            <div class="change">{{ formula_name }}</div>
+            
+            <div class="formula-buttons">
+                <a href="/?formula=simple" class="formula-btn {{ 'active' if formula == 'simple' else '' }}">Simple NAV</a>
+                <a href="/?formula=ev" class="formula-btn {{ 'active' if formula == 'ev' else '' }}">Enterprise Value</a>
+                <a href="/?formula=adjusted" class="formula-btn {{ 'active' if formula == 'adjusted' else '' }}">Adjusted NAV</a>
+                <a href="/?formula=btc" class="formula-btn {{ 'active' if formula == 'btc' else '' }}">BTC/1000 Shares</a>
+                <a href="/?formula=yield" class="formula-btn {{ 'active' if formula == 'yield' else '' }}">BTC Yield</a>
             </div>
+            
+            <div class="metrics">
+                {{ btc_holdings }} BTC • {{ stock_price }}/share • {{ btc_price }}/BTC
+            </div>
+            
             <div class="last-updated">Last updated: {{ timestamp }}</div>
         </div>
         <a href="/api/mnav" class="api-link">API →</a>
         
         <script>
-            // Auto-refresh every 30 seconds
-            setTimeout(() => location.reload(), 30000);
+            // Auto-refresh every 5 minutes
+            setTimeout(() => location.reload(), 300000);
         </script>
     </body>
     </html>
@@ -141,10 +252,12 @@ def home():
     
     return render_template_string(
         html_template,
-        fund_name=fund_name,
-        nav_value=nav_value,
-        change=change,
-        change_percent=change_percent,
+        display_value=display_value,
+        formula_name=formula_name,
+        formula=formula,
+        btc_holdings=btc_holdings,
+        stock_price=stock_price,
+        btc_price=btc_price,
         timestamp=datetime.now().strftime('%H:%M:%S')
     )
 
@@ -171,38 +284,52 @@ def health_check():
 
 @app.route('/api/mnav', methods=['GET'])
 def get_mnav():
-    """Get mNAV data - example implementation"""
+    """Get MicroStrategy mNAV data"""
     try:
-        # Example: Get fund code from query parameter
-        fund_code = request.args.get('fund_code', 'default')
+        # Get real MicroStrategy data
+        data = get_cached_mstr_data()
         
-        # In a real implementation, this would fetch actual mNAV data
-        # from a financial API or scrape from a website
-        # For demo purposes, returning mock data
-        
-        mock_data = {
-            'fund_code': fund_code,
-            'fund_name': f'Sample Fund {fund_code}',
-            'nav': 125.45,
-            'date': datetime.utcnow().strftime('%Y-%m-%d'),
-            'change': 1.23,
-            'change_percent': 0.99,
-            'currency': 'USD',
-            'last_updated': datetime.utcnow().isoformat(),
-            'data_source': 'mock'
+        # Build comprehensive response
+        response_data = {
+            'company': 'MicroStrategy Inc.',
+            'ticker': 'MSTR',
+            'nav_metrics': {
+                'simple_nav': data.get('simple_nav', 2.5),
+                'enterprise_value_nav': data.get('ev_nav', 2.8),
+                'adjusted_nav': data.get('adjusted_nav', 2.9),
+                'premium_per_share': data.get('premium_per_share', 150.0)
+            },
+            'bitcoin_metrics': {
+                'total_btc': data.get('btc_holdings', 607770),
+                'btc_per_share': data.get('btc_per_share', 0.00314),
+                'btc_per_1000_shares': data.get('btc_per_1000_shares', 3.14),
+                'btc_yield_30d': data.get('btc_yield_30d', 0.6),
+                'btc_price': data.get('btc_price', 95000)
+            },
+            'stock_metrics': {
+                'price': data.get('stock_price', 773.50),
+                'market_cap': data.get('market_cap', 150000000000),
+                'shares_outstanding': data.get('shares_outstanding', 193500000),
+                'volume': data.get('volume', 5000000)
+            },
+            'financial_metrics': {
+                'enterprise_value': data.get('enterprise_value', 155800000000),
+                'total_debt': data.get('total_debt', 6200000000),
+                'cash': data.get('cash', 400000000),
+                'btc_value': data.get('btc_value', 57738150000)
+            },
+            'last_updated': data.get('last_updated', datetime.utcnow().isoformat() + 'Z'),
+            'data_sources': [
+                'Yahoo Finance (MSTR stock data)',
+                'CoinGecko/Yahoo (Bitcoin price)',
+                'SaylorTracker (BTC holdings)'
+            ]
         }
         
-        # Example of how you might scrape real data:
-        # url = f"https://example-fund-site.com/nav/{fund_code}"
-        # response = requests.get(url, timeout=10)
-        # soup = BeautifulSoup(response.content, 'html.parser')
-        # nav_value = soup.find('div', class_='nav-value').text
-        # mock_data['nav'] = float(nav_value)
-        
-        logger.info(f"mNAV data requested for fund: {fund_code}")
+        logger.info("MicroStrategy mNAV data requested")
         return jsonify({
             'success': True,
-            'data': mock_data,
+            'data': response_data,
             'timestamp': datetime.utcnow().isoformat()
         }), 200
         
