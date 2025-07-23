@@ -63,10 +63,24 @@ def get_cached_mstr_data() -> Dict:
         return {
             'simple_nav': 2.5,
             'ev_nav': 2.8,
+            'adjusted_nav': 2.9,
+            'official_nav': 1.79,
+            'official_nav_timestamp': '2025-01-23T00:00:00Z',
+            'official_nav_source': 'Fallback value',
             'btc_per_share': 0.00314,
+            'btc_per_1000_shares': 3.14,
             'btc_holdings': 607_770,
             'btc_price': 95_000,
             'stock_price': 773.50,
+            'btc_yield_30d': 0.6,
+            'premium_per_share': 150.0,
+            'market_cap': 150_000_000_000,
+            'shares_outstanding': 193_500_000,
+            'volume': 5_000_000,
+            'enterprise_value': 155_800_000_000,
+            'total_debt': 6_200_000_000,
+            'cash': 400_000_000,
+            'btc_value': 57_738_150_000,
             'last_updated': datetime.utcnow().isoformat() + 'Z'
         }
 
@@ -84,6 +98,7 @@ def home():
         'simple': ('simple_nav', 'Simple NAV Premium'),
         'ev': ('ev_nav', 'Enterprise Value NAV'),
         'adjusted': ('adjusted_nav', 'Adjusted NAV'),
+        'official': ('official_nav', 'Official mNAV (Strategy.com)'),
         'btc': ('btc_per_1000_shares', 'BTC per 1000 Shares'),
         'yield': ('btc_yield_30d', '30-Day BTC Yield')
     }
@@ -98,6 +113,19 @@ def home():
         display_value = f"{nav_value:.1f}%"
     else:
         display_value = f"{nav_value:.2f}x"
+    
+    # Get timestamp and source info for official mNAV
+    official_source = ""
+    if formula == 'official':
+        official_source = data.get('official_nav_source', '')
+        official_timestamp = data.get('official_nav_timestamp', '')
+        if official_timestamp:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(official_timestamp.replace('Z', '+00:00'))
+                official_source += f" • {dt.strftime('%Y-%m-%d')}"
+            except:
+                pass
     
     # Additional display data
     btc_holdings = f"{data.get('btc_holdings', 607770):,}"
@@ -230,6 +258,7 @@ def home():
                 <a href="/?formula=simple" class="formula-btn {{ 'active' if formula == 'simple' else '' }}">Simple NAV</a>
                 <a href="/?formula=ev" class="formula-btn {{ 'active' if formula == 'ev' else '' }}">Enterprise Value</a>
                 <a href="/?formula=adjusted" class="formula-btn {{ 'active' if formula == 'adjusted' else '' }}">Adjusted NAV</a>
+                <a href="/?formula=official" class="formula-btn {{ 'active' if formula == 'official' else '' }}">Official (Strategy.com)</a>
                 <a href="/?formula=btc" class="formula-btn {{ 'active' if formula == 'btc' else '' }}">BTC/1000 Shares</a>
                 <a href="/?formula=yield" class="formula-btn {{ 'active' if formula == 'yield' else '' }}">BTC Yield</a>
             </div>
@@ -237,6 +266,12 @@ def home():
             <div class="metrics">
                 {{ btc_holdings }} BTC • {{ stock_price }}/share • {{ btc_price }}/BTC
             </div>
+            
+            {% if official_source %}
+            <div class="metrics" style="color: #ff9800; margin-top: 0.5rem;">
+                {{ official_source }}
+            </div>
+            {% endif %}
             
             <div class="last-updated">Last updated: {{ timestamp }}</div>
         </div>
@@ -258,6 +293,7 @@ def home():
         btc_holdings=btc_holdings,
         stock_price=stock_price,
         btc_price=btc_price,
+        official_source=official_source,
         timestamp=datetime.now().strftime('%H:%M:%S')
     )
 
@@ -297,6 +333,9 @@ def get_mnav():
                 'simple_nav': data.get('simple_nav', 2.5),
                 'enterprise_value_nav': data.get('ev_nav', 2.8),
                 'adjusted_nav': data.get('adjusted_nav', 2.9),
+                'official_nav': data.get('official_nav', 1.79),
+                'official_nav_timestamp': data.get('official_nav_timestamp', ''),
+                'official_nav_source': data.get('official_nav_source', ''),
                 'premium_per_share': data.get('premium_per_share', 150.0)
             },
             'bitcoin_metrics': {

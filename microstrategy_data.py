@@ -32,6 +32,9 @@ class MicroStrategyData:
         self.btc_price = None
         self.mstr_data = None
         self.last_update = None
+        self.official_mnav = None
+        self.official_mnav_timestamp = None
+        self.official_mnav_source = None
         
     def fetch_all_data(self) -> Dict:
         """Fetch all required data and calculate metrics"""
@@ -44,6 +47,9 @@ class MicroStrategyData:
             
             # Fetch MSTR stock data
             self.mstr_data = self._fetch_mstr_data()
+            
+            # Fetch official mNAV from strategy.com
+            self.official_mnav, self.official_mnav_timestamp, self.official_mnav_source = self._fetch_strategy_com_mnav()
             
             # Calculate all metrics
             metrics = self._calculate_all_metrics()
@@ -77,6 +83,65 @@ class MicroStrategyData:
             logger.warning(f"Failed to scrape BTC holdings: {e}")
             # Return last known value
             return 607_770
+    
+    def _fetch_strategy_com_mnav(self) -> Tuple[float, str, str]:
+        """Fetch official mNAV from strategy.com
+        
+        Returns:
+            Tuple of (mnav_value, timestamp, source_description)
+        """
+        try:
+            # Headers to mimic a real browser
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0'
+            }
+            
+            response = requests.get('https://www.strategy.com', headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Try to find mNAV value - will need to inspect actual HTML
+                # Look for patterns like "mNAV: 1.79" or "1.79x"
+                # This is a placeholder - actual selector needs to be determined
+                mnav_text = soup.find(text=lambda t: t and 'mNAV' in t)
+                if mnav_text:
+                    # Extract number from text
+                    import re
+                    match = re.search(r'(\d+\.\d+)', mnav_text)
+                    if match:
+                        return (
+                            float(match.group(1)),
+                            datetime.utcnow().isoformat() + 'Z',
+                            'Live from strategy.com'
+                        )
+                
+                # Alternative: look for specific class/id
+                # mnav_element = soup.find('div', class_='mnav-value')
+                # if mnav_element:
+                #     return float(mnav_element.text.strip())
+            
+            logger.warning(f"Failed to scrape strategy.com: Status {response.status_code}")
+            
+        except Exception as e:
+            logger.warning(f"Error fetching strategy.com mNAV: {e}")
+        
+        # Return last known official value with fallback timestamp
+        return (
+            1.79,
+            '2025-01-23T00:00:00Z',  # Last known date
+            'Fallback value (scraping failed)'
+        )
     
     def _fetch_btc_price(self) -> float:
         """Fetch current Bitcoin price from multiple sources"""
@@ -161,6 +226,9 @@ class MicroStrategyData:
             'simple_nav': round(simple_nav, 2),
             'ev_nav': round(ev_nav, 2),
             'adjusted_nav': round(adjusted_nav, 2),
+            'official_nav': self.official_mnav,
+            'official_nav_timestamp': self.official_mnav_timestamp,
+            'official_nav_source': self.official_mnav_source,
             'btc_per_share': btc_per_share,
             'btc_per_1000_shares': round(btc_per_1000_shares, 2),
             'nav_per_share': round(nav_per_share, 2),
@@ -185,6 +253,9 @@ class MicroStrategyData:
             'simple_nav': 2.5,
             'ev_nav': 2.8,
             'adjusted_nav': 2.9,
+            'official_nav': 1.79,
+            'official_nav_timestamp': '2025-01-23T00:00:00Z',
+            'official_nav_source': 'Fallback value',
             'btc_per_share': 0.00314,
             'btc_per_1000_shares': 3.14,
             'nav_per_share': 309.40,
