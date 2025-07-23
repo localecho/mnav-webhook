@@ -111,20 +111,42 @@ class MicroStrategyData:
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 
-                # Try to find mNAV value - will need to inspect actual HTML
-                # Look for patterns like "mNAV: 1.79" or "1.79x"
-                # This is a placeholder - actual selector needs to be determined
-                mnav_text = soup.find(text=lambda t: t and 'mNAV' in t)
-                if mnav_text:
-                    # Extract number from text
-                    import re
-                    match = re.search(r'(\d+\.\d+)', mnav_text)
-                    if match:
+                # Try to find mNAV value with more specific patterns
+                import re
+                
+                # Look for mNAV patterns in script tags and JSON data
+                scripts = soup.find_all('script')
+                for script in scripts:
+                    if script.string:
+                        # Look for patterns like "mNAV":1.79 or "mnav":1.79
+                        mnav_match = re.search(r'["\']m[Nn][Aa][Vv]["\']\s*:\s*(\d+\.?\d*)', script.string)
+                        if mnav_match:
+                            value = float(mnav_match.group(1))
+                            logger.info(f"Found mNAV candidate in script: {value}")
+                            # Validate that it's a reasonable mNAV value (typically 0.5-5.0)
+                            if 0.5 <= value <= 5.0:
+                                return (
+                                    value,
+                                    datetime.utcnow().isoformat() + 'Z',
+                                    'Live from strategy.com'
+                                )
+                
+                # Try to find in page text with context
+                text_content = soup.get_text()
+                # Look for patterns like "mNAV 1.79" or "mNAV: 1.79x"
+                mnav_pattern = re.search(r'mNAV[:\s]+(\d+\.?\d*)x?', text_content, re.IGNORECASE)
+                if mnav_pattern:
+                    value = float(mnav_pattern.group(1))
+                    logger.info(f"Found mNAV candidate in text: {value}")
+                    # Validate reasonable range
+                    if 0.5 <= value <= 5.0:
                         return (
-                            float(match.group(1)),
+                            value,
                             datetime.utcnow().isoformat() + 'Z',
                             'Live from strategy.com'
                         )
+                    else:
+                        logger.warning(f"mNAV value {value} outside expected range (0.5-5.0)")
                 
                 # Alternative: look for specific class/id
                 # mnav_element = soup.find('div', class_='mnav-value')
