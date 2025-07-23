@@ -114,6 +114,20 @@ class MicroStrategyData:
             # Return last known value
             return 607_770
     
+    async def _try_playwright_scraper(self) -> Optional[Tuple[float, str, str]]:
+        """Try to scrape using Playwright (for JavaScript rendering)"""
+        try:
+            from playwright_scraper import PlaywrightScraper
+            import asyncio
+            
+            scraper = PlaywrightScraper(headless=True)
+            result = await scraper.scrape_strategy_com()
+            await scraper.close()
+            return result
+        except Exception as e:
+            logger.warning(f"Playwright scraping failed: {e}")
+            return None
+    
     @retry_with_backoff(retries=3, backoff_in_seconds=2)
     def _fetch_strategy_com_mnav(self) -> Tuple[float, str, str]:
         """Fetch official mNAV from strategy.com
@@ -121,6 +135,34 @@ class MicroStrategyData:
         Returns:
             Tuple of (mnav_value, timestamp, source_description)
         """
+        # First try Playwright for JavaScript rendering
+        try:
+            import asyncio
+            result = asyncio.run(self._try_playwright_scraper())
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"Playwright not available: {e}")
+        
+        # Try external scraping services
+        try:
+            from external_scrapers import external_scraper_manager
+            result = external_scraper_manager.scrape_strategy_com()
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"External scrapers not available: {e}")
+        
+        # Try alternative data sources (Twitter, StockTwits, etc)
+        try:
+            from alternative_sources import alternative_data
+            result = alternative_data.get_alternative_mnav()
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"Alternative sources not available: {e}")
+        
+        # Fallback to regular requests
         try:
             # Headers to mimic a real browser
             headers = {

@@ -514,6 +514,113 @@ def mnav_webhook():
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
+@app.route('/admin/manual-update', methods=['GET', 'POST'])
+def admin_manual_update():
+    """Admin interface for manual mNAV updates"""
+    # Simple authentication check
+    auth_token = request.headers.get('X-Admin-Token') or request.args.get('token')
+    admin_token = os.environ.get('ADMIN_SECRET_KEY', 'change-me-in-production')
+    
+    if request.method == 'GET':
+        # Show manual update form
+        if auth_token != admin_token:
+            return '''
+            <html>
+            <head><title>Admin Login</title></head>
+            <body style="font-family: Arial; padding: 20px;">
+                <h2>Admin Authentication Required</h2>
+                <form method="GET">
+                    <label>Admin Token: <input type="password" name="token" /></label>
+                    <button type="submit">Login</button>
+                </form>
+            </body>
+            </html>
+            ''', 401
+            
+        # Show update form
+        return '''
+        <html>
+        <head>
+            <title>Manual mNAV Update</title>
+            <style>
+                body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+                .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+                input, textarea { width: 100%; padding: 8px; margin: 5px 0; }
+                button { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+                .current { background: #e3f2fd; padding: 10px; border-radius: 4px; margin: 10px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>Manual mNAV Update</h2>
+                <div class="current">
+                    <strong>Current mNAV:</strong> ''' + str(_cache['data'].get('official_nav') if _cache['data'] else 'N/A') + '''<br>
+                    <strong>Source:</strong> ''' + str(_cache['data'].get('official_nav_source') if _cache['data'] else 'N/A') + '''
+                </div>
+                <form method="POST">
+                    <input type="hidden" name="token" value="''' + auth_token + '''">
+                    <label>mNAV Value: <input type="number" name="mnav" step="0.01" min="0.5" max="5.0" required /></label>
+                    <label>Source/Note: <input type="text" name="source" placeholder="e.g., From strategy.com" required /></label>
+                    <label>Reason: <textarea name="reason" rows="3" required></textarea></label>
+                    <button type="submit">Update mNAV</button>
+                </form>
+            </div>
+        </body>
+        </html>
+        '''
+    
+    # Handle POST - update mNAV
+    if auth_token != admin_token:
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    try:
+        mnav_value = float(request.form.get('mnav'))
+        source = request.form.get('source')
+        reason = request.form.get('reason')
+        
+        # Validate range
+        if not (0.5 <= mnav_value <= 5.0):
+            return jsonify({'error': 'mNAV must be between 0.5 and 5.0'}), 400
+            
+        # Update the cache with manual value
+        from microstrategy_data import get_microstrategy_data
+        from data_store import DataStore
+        
+        # Get current data
+        current_data = get_microstrategy_data()
+        
+        # Override official mNAV
+        current_data['official_nav'] = mnav_value
+        current_data['official_nav_source'] = f"Manual: {source}"
+        current_data['official_nav_timestamp'] = datetime.utcnow().isoformat() + 'Z'
+        current_data['manual_update_reason'] = reason
+        
+        # Save to storage
+        DataStore.save_data(current_data)
+        
+        # Update cache
+        _cache['data'] = current_data
+        _cache['timestamp'] = time.time()
+        
+        logger.info(f"Manual mNAV update: {mnav_value} - {source} - {reason}")
+        
+        return '''
+        <html>
+        <head><title>Update Successful</title></head>
+        <body style="font-family: Arial; padding: 20px;">
+            <h2>✓ mNAV Updated Successfully</h2>
+            <p>New value: <strong>''' + str(mnav_value) + '''x</strong></p>
+            <p>Source: ''' + source + '''</p>
+            <a href="/admin/manual-update?token=''' + auth_token + '''">Update Again</a> | 
+            <a href="/">View Site</a>
+        </body>
+        </html>
+        '''
+        
+    except Exception as e:
+        logger.error(f"Manual update error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/update', methods=['POST'])
 def force_update():
     """Force update of mNAV data (for debugging/manual updates)"""

@@ -83,3 +83,12 @@ venv.bak/
 .env.local
 .env.production
 secrets/
+
+# Playwright
+playwright-report/
+test-results/
+screenshots/
+
+# Data files
+/tmp/
+mnav_data.json
