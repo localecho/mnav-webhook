@@ -121,7 +121,6 @@ def home():
         official_timestamp = data.get('official_nav_timestamp', '')
         if official_timestamp:
             try:
-                from datetime import datetime
                 dt = datetime.fromisoformat(official_timestamp.replace('Z', '+00:00'))
                 official_source += f" • {dt.strftime('%Y-%m-%d')}"
             except:
