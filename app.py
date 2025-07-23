@@ -206,6 +206,10 @@ def home():
                 justify-content: center;
                 flex-wrap: wrap;
             }
+            .tooltip-container {
+                position: relative;
+                display: inline-block;
+            }
             .formula-btn {
                 padding: 0.5rem 1rem;
                 background: #333;
@@ -223,6 +227,42 @@ def home():
             .formula-btn.active {
                 background: #4CAF50;
                 border-color: #4CAF50;
+            }
+            .formula-btn[title] {
+                cursor: help;
+            }
+            .tooltip {
+                visibility: hidden;
+                background-color: #333;
+                color: #fff;
+                text-align: left;
+                padding: 8px 12px;
+                border-radius: 6px;
+                position: absolute;
+                z-index: 1;
+                bottom: 125%;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 250px;
+                font-size: 0.85rem;
+                line-height: 1.4;
+                opacity: 0;
+                transition: opacity 0.3s;
+            }
+            .tooltip::after {
+                content: "";
+                position: absolute;
+                top: 100%;
+                left: 50%;
+                margin-left: -5px;
+                border-width: 5px;
+                border-style: solid;
+                border-color: #333 transparent transparent transparent;
+            }
+            .formula-btn:hover + .tooltip,
+            .tooltip:hover {
+                visibility: visible;
+                opacity: 1;
             }
             .metrics {
                 font-size: 1rem;
@@ -254,12 +294,36 @@ def home():
             <div class="change">{{ formula_name }}</div>
             
             <div class="formula-buttons">
-                <a href="/?formula=simple" class="formula-btn {{ 'active' if formula == 'simple' else '' }}">Simple NAV</a>
-                <a href="/?formula=ev" class="formula-btn {{ 'active' if formula == 'ev' else '' }}">Enterprise Value</a>
-                <a href="/?formula=adjusted" class="formula-btn {{ 'active' if formula == 'adjusted' else '' }}">Adjusted NAV</a>
-                <a href="/?formula=official" class="formula-btn {{ 'active' if formula == 'official' else '' }}">Official (Strategy.com)</a>
-                <a href="/?formula=btc" class="formula-btn {{ 'active' if formula == 'btc' else '' }}">BTC/1000 Shares</a>
-                <a href="/?formula=yield" class="formula-btn {{ 'active' if formula == 'yield' else '' }}">BTC Yield</a>
+                <div class="tooltip-container">
+                    <a href="/?formula=simple" class="formula-btn {{ 'active' if formula == 'simple' else '' }}" 
+                       title="Market Cap / BTC Holdings Value">Simple NAV</a>
+                    <span class="tooltip">Market Cap ÷ BTC Holdings Value<br><br>The basic premium of MSTR stock price over its Bitcoin holdings</span>
+                </div>
+                <div class="tooltip-container">
+                    <a href="/?formula=ev" class="formula-btn {{ 'active' if formula == 'ev' else '' }}"
+                       title="Enterprise Value / BTC Holdings Value">Enterprise Value</a>
+                    <span class="tooltip">(Market Cap + Debt - Cash) ÷ BTC Holdings Value<br><br>Accounts for debt and cash positions</span>
+                </div>
+                <div class="tooltip-container">
+                    <a href="/?formula=adjusted" class="formula-btn {{ 'active' if formula == 'adjusted' else '' }}"
+                       title="Adjusted for software business">Adjusted NAV</a>
+                    <span class="tooltip">(Market Cap + Debt - Cash - Software Value) ÷ BTC Holdings Value<br><br>Excludes estimated software business value</span>
+                </div>
+                <div class="tooltip-container">
+                    <a href="/?formula=official" class="formula-btn {{ 'active' if formula == 'official' else '' }}"
+                       title="Official mNAV from strategy.com">Official (Strategy.com)</a>
+                    <span class="tooltip">The official mNAV as reported on strategy.com<br><br>May use proprietary calculations</span>
+                </div>
+                <div class="tooltip-container">
+                    <a href="/?formula=btc" class="formula-btn {{ 'active' if formula == 'btc' else '' }}"
+                       title="Bitcoin per 1000 shares">BTC/1000 Shares</a>
+                    <span class="tooltip">Total BTC Holdings ÷ Shares Outstanding × 1000<br><br>How much Bitcoin you own per 1000 MSTR shares</span>
+                </div>
+                <div class="tooltip-container">
+                    <a href="/?formula=yield" class="formula-btn {{ 'active' if formula == 'yield' else '' }}"
+                       title="30-day BTC yield estimate">BTC Yield</a>
+                    <span class="tooltip">Estimated 30-day BTC yield based on Saylor's target<br><br>Rough monthly estimate from 6-8% annual target</span>
+                </div>
             </div>
             
             <div class="metrics">
