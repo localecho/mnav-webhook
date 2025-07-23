@@ -36,15 +36,26 @@ webhook_data = []
 _cache = {
     'data': None,
     'timestamp': 0,
-    'ttl': 300  # 5 minutes
+    'ttl': 86400  # 24 hours (update once daily)
 }
+
+def should_update_at_midnight() -> bool:
+    """Check if we should update data (once per day at midnight UTC)"""
+    if not _cache['timestamp']:
+        return True
+    
+    last_update = datetime.fromtimestamp(_cache['timestamp'])
+    now = datetime.utcnow()
+    
+    # Update if it's a new day (UTC)
+    return last_update.date() < now.date()
 
 def get_cached_mstr_data() -> Dict:
     """Get MicroStrategy data with caching"""
     current_time = time.time()
     
-    # Check if cache is valid
-    if _cache['data'] and (current_time - _cache['timestamp']) < _cache['ttl']:
+    # Check if cache is valid or if it's past midnight UTC
+    if _cache['data'] and not should_update_at_midnight():
         return _cache['data']
     
     # Import here to avoid circular imports
@@ -497,6 +508,100 @@ def mnav_webhook():
         
     except Exception as e:
         logger.error(f"Webhook processing error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+@app.route('/api/update', methods=['POST'])
+def force_update():
+    """Force update of mNAV data (for debugging/manual updates)"""
+    try:
+        # Clear cache to force update
+        _cache['data'] = None
+        _cache['timestamp'] = 0
+        
+        # Get fresh data
+        data = get_cached_mstr_data()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Data updated successfully',
+            'official_nav': data.get('official_nav'),
+            'official_nav_source': data.get('official_nav_source'),
+            'last_updated': data.get('last_updated'),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error forcing update: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+@app.route('/api/cron/daily-update', methods=['GET', 'POST'])
+def cron_daily_update():
+    """Cron job endpoint for daily updates (called by Vercel cron)"""
+    try:
+        # Verify this is a Vercel cron request (optional security)
+        cron_header = request.headers.get('X-Vercel-Cron')
+        
+        # Clear cache to force update
+        _cache['data'] = None
+        _cache['timestamp'] = 0
+        
+        # Get fresh data
+        data = get_cached_mstr_data()
+        
+        logger.info(f"Daily cron update completed. Official mNAV: {data.get('official_nav')}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Daily update completed',
+            'official_nav': data.get('official_nav'),
+            'official_nav_source': data.get('official_nav_source'),
+            'is_cron': bool(cron_header),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Cron update error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+@app.route('/api/status', methods=['GET'])
+def scraping_status():
+    """Check scraping status and last update info"""
+    try:
+        from data_store import DataStore
+        
+        # Get current cache info
+        cache_age = time.time() - _cache['timestamp'] if _cache['timestamp'] else None
+        last_data = DataStore.get_last_successful_mnav()
+        
+        return jsonify({
+            'success': True,
+            'cache': {
+                'has_data': bool(_cache['data']),
+                'age_seconds': cache_age,
+                'age_readable': f"{cache_age/3600:.1f} hours" if cache_age else "Never updated"
+            },
+            'last_successful_scrape': last_data,
+            'current_data': {
+                'official_nav': _cache['data'].get('official_nav') if _cache['data'] else None,
+                'official_nav_source': _cache['data'].get('official_nav_source') if _cache['data'] else None
+            },
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error checking status: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e),

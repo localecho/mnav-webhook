@@ -14,6 +14,7 @@ from typing import Dict, Optional, Tuple
 import logging
 import time
 from functools import wraps
+from data_store import DataStore
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,11 @@ class MicroStrategyData:
             metrics = self._calculate_all_metrics()
             
             self.last_update = datetime.utcnow()
+            
+            # Save successful data to storage
+            if self.official_mnav and self.official_mnav_source != 'Fallback value (scraping failed)':
+                DataStore.save_data(metrics)
+            
             return metrics
             
         except Exception as e:
@@ -132,6 +138,8 @@ class MicroStrategyData:
             }
             
             response = requests.get('https://www.strategy.com', headers=headers, timeout=10)
+            
+            logger.info(f"Strategy.com response status: {response.status_code}")
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
@@ -204,7 +212,16 @@ class MicroStrategyData:
         except Exception as e:
             logger.warning(f"Error fetching strategy.com mNAV: {e}")
         
-        # Return last known official value with fallback timestamp
+        # Try to get last successful scrape from storage
+        last_successful = DataStore.get_last_successful_mnav()
+        if last_successful:
+            return (
+                last_successful['value'],
+                last_successful['timestamp'],
+                last_successful['source']
+            )
+        
+        # Return hardcoded fallback as last resort
         return (
             1.79,
             '2025-01-23T00:00:00Z',  # Last known date
