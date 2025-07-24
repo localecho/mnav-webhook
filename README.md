@@ -1,42 +1,78 @@
-# mNAV API - Mutual Fund Net Asset Value API
+# MicroStrategy mNAV Tracker
 
-A Flask-based REST API for mutual fund Net Asset Value (mNAV) data with webhook support. This API provides endpoints for fetching mNAV data and receiving webhook notifications.
+A comprehensive web application for tracking MicroStrategy's mNAV (multiple Net Asset Value) with advanced scraping capabilities, multiple data sources, and real-time updates. Live at https://mnav-webhook.vercel.app
 
 ## Features
 
-- 🚀 RESTful API endpoints
-- 📊 mNAV data retrieval
-- 🔔 Webhook support for real-time updates
-- 🏥 Health check endpoint
-- 🌐 CORS enabled
-- 🐳 Docker containerized
-- 🚂 Railway deployment ready
-- 🔄 CI/CD with GitHub Actions
-- 📺 **NEW: Big display mode** - Shows mNAV value in large, centered text
+### Core Features
+- 📊 **Real-time mNAV tracking** - Multiple calculation methods (Simple, EV, Adjusted, Official)
+- 📺 **Big display mode** - Large, centered mNAV display with auto-refresh
+- 🔄 **Daily updates** - Automatic updates at midnight UTC
+- 📱 **Responsive design** - Works on desktop and mobile
+- 🎨 **Interactive tooltips** - Hover over formulas to see calculations
+
+### Advanced Scraping
+- 🤖 **Playwright browser automation** - Handles JavaScript-heavy sites
+- 🌐 **External scraping services** - ScrapingBee and Browserless integration
+- 📱 **Social media monitoring** - Twitter and StockTwits for mNAV mentions
+- 📈 **Alternative data sources** - TradingView and financial APIs
+- 🔄 **Multiple fallback layers** - Ensures data availability
+- 💾 **Persistent storage** - Saves successful scrapes for reliability
+
+### Admin Features
+- 🔐 **Manual update interface** - Admin can override mNAV values
+- 📝 **Audit trail** - Tracks all manual updates with reasons
+- 🔑 **Token authentication** - Secure admin access
+- 📊 **Status monitoring** - Check scraping health and cache status
+
+### API Endpoints
+- 🚀 RESTful API with comprehensive data
+- 🔔 Webhook support for integrations
+- 🏥 Health check and status endpoints
+- 🌐 CORS enabled for cross-origin requests
 
 ## Quick Start
+
+### Visit Live Site
+```
+https://mnav-webhook.vercel.app
+```
 
 ### Local Development
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/mnav-api.git
-   cd mnav-api
+   git clone https://github.com/localecho/mnav-webhook.git
+   cd mnav-webhook
    ```
 
-2. **Install dependencies**
+2. **Set up environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys
+   ```
+
+3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
+   ./install_playwright.sh  # Install browser for scraping
    ```
 
-3. **Run the application**
+4. **Run the application**
    ```bash
    python app.py
    ```
 
-4. **Test the API**
+5. **Test the application**
    ```bash
-   curl http://localhost:5000/api/health
+   # View main page
+   open http://localhost:5000
+   
+   # Check API
+   curl http://localhost:5000/api/mnav
+   
+   # Check status
+   curl http://localhost:5000/api/status
    ```
 
 ### Docker
