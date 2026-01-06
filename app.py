@@ -751,6 +751,201 @@ def webhook_history():
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
+# ============================================
+# STRATEGY ENDPOINTS
+# ============================================
+
+@app.route('/api/strategy', methods=['GET'])
+def get_strategy_signal():
+    """
+    Get current strategy signal with leading/lagging indicators.
+
+    Returns:
+        JSON with signal (LONG/SHORT/NEUTRAL), score, confidence,
+        and detailed indicator breakdown.
+    """
+    try:
+        from strategy_indicators import get_strategy_signal
+        from sheets_exporter import export_to_sheets
+
+        # Get current mNAV data
+        mnav_data = get_cached_mstr_data()
+        current_mnav = mnav_data.get('simple_nav', 2.0)
+
+        # Generate strategy signal
+        signal_data = get_strategy_signal(current_mnav)
+
+        # Export to Google Sheets (async, don't block)
+        try:
+            export_to_sheets(signal_data, mnav_data)
+        except Exception as e:
+            logger.warning(f"Sheets export failed: {e}")
+
+        return jsonify({
+            'success': True,
+            **signal_data
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error generating strategy signal: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+
+@app.route('/api/strategy/indicators', methods=['GET'])
+def get_indicators_detail():
+    """
+    Get detailed breakdown of all indicators.
+    """
+    try:
+        from strategy_indicators import strategy_engine
+
+        mnav_data = get_cached_mstr_data()
+        current_mnav = mnav_data.get('simple_nav', 2.0)
+
+        # Get all indicators
+        leading = {}
+        lagging = {}
+
+        # Leading indicators
+        btc_momentum = strategy_engine.leading.get_btc_momentum()
+        for key, ind in btc_momentum.items():
+            leading[key] = {
+                'name': ind.name,
+                'value': ind.value,
+                'signal': ind.signal,
+                'weight': ind.weight,
+                'description': ind.description
+            }
+
+        options = strategy_engine.leading.get_options_flow()
+        if options:
+            leading['options_flow'] = {
+                'name': options.name,
+                'value': options.value,
+                'signal': options.signal,
+                'weight': options.weight,
+                'description': options.description
+            }
+
+        fear_greed = strategy_engine.leading.get_fear_greed_index()
+        if fear_greed:
+            leading['fear_greed'] = {
+                'name': fear_greed.name,
+                'value': fear_greed.value,
+                'signal': fear_greed.signal,
+                'weight': fear_greed.weight,
+                'description': fear_greed.description
+            }
+
+        # Lagging indicators
+        ma_indicators = strategy_engine.lagging.get_moving_averages(current_mnav)
+        for key, ind in ma_indicators.items():
+            lagging[key] = {
+                'name': ind.name,
+                'value': ind.value,
+                'signal': ind.signal,
+                'weight': ind.weight,
+                'description': ind.description
+            }
+
+        rsi = strategy_engine.lagging.get_rsi(current_mnav)
+        if rsi:
+            lagging['rsi'] = {
+                'name': rsi.name,
+                'value': rsi.value,
+                'signal': rsi.signal,
+                'weight': rsi.weight,
+                'description': rsi.description
+            }
+
+        premium_zone = strategy_engine.lagging.get_premium_zone(current_mnav)
+        lagging['premium_zone'] = {
+            'name': premium_zone.name,
+            'value': premium_zone.value,
+            'signal': premium_zone.signal,
+            'weight': premium_zone.weight,
+            'description': premium_zone.description
+        }
+
+        return jsonify({
+            'success': True,
+            'current_mnav': current_mnav,
+            'leading_indicators': leading,
+            'lagging_indicators': lagging,
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching indicators: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+
+@app.route('/api/strategy/dashboard', methods=['GET'])
+def get_strategy_dashboard():
+    """
+    Get formatted dashboard data for display.
+    """
+    try:
+        from strategy_indicators import get_strategy_signal
+
+        mnav_data = get_cached_mstr_data()
+        current_mnav = mnav_data.get('simple_nav', 2.0)
+        signal_data = get_strategy_signal(current_mnav)
+
+        # Format for dashboard display
+        dashboard = {
+            'headline': {
+                'mnav': f"{current_mnav:.2f}x",
+                'signal': signal_data['signal'],
+                'score': f"{signal_data['score']}/10",
+                'confidence': f"{signal_data['confidence']}%"
+            },
+            'btc': {
+                'price': f"${mnav_data.get('btc_price', 0):,}",
+                'holdings': f"{mnav_data.get('btc_holdings', 0):,} BTC",
+                'value': f"${mnav_data.get('btc_value', 0):,}"
+            },
+            'mstr': {
+                'price': f"${mnav_data.get('stock_price', 0):.2f}",
+                'market_cap': f"${mnav_data.get('market_cap', 0) / 1e9:.1f}B",
+                'premium': f"{mnav_data.get('premium_per_share', 0):.1f}%"
+            },
+            'indicators': {
+                'leading_bullish': sum(1 for i in signal_data['leading_indicators'] if 'bullish' in i.get('signal', '')),
+                'leading_bearish': sum(1 for i in signal_data['leading_indicators'] if 'bearish' in i.get('signal', '')),
+                'lagging_bullish': sum(1 for i in signal_data['lagging_indicators'] if 'bullish' in i.get('signal', '')),
+                'lagging_bearish': sum(1 for i in signal_data['lagging_indicators'] if 'bearish' in i.get('signal', ''))
+            },
+            'recommendation': signal_data['recommendation'],
+            'last_updated': datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')
+        }
+
+        return jsonify({
+            'success': True,
+            'dashboard': dashboard
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error generating dashboard: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+
+# ============================================
+# ERROR HANDLERS
+# ============================================
+
 @app.errorhandler(404)
 def not_found(error):
     """Handle 404 errors"""
