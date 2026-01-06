@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "puppeteer": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-puppeteer"],
+      "env": {
+        "PUPPETEER_HEADLESS": "true",
+        "PUPPETEER_TIMEOUT": "30000"
+      }
+    },
+    "google-sheets": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-google-sheets"],
+      "env": {
+        "GOOGLE_CREDENTIALS": "${GOOGLE_SHEETS_CREDENTIALS}"
+      }
+    }
+  }
+}
